@@ -14,10 +14,10 @@ class Capture:
         self.packets = []
         self.capturing = False
 
-    def __init__(self, callback):
+    def start(self, callback):
         self.capturing = True
         self.callback = callback
-        thread = threading.Thread(target = self._cap-True, daemon = True)
+        thread = threading.Thread(target = self._capture, daemon = True)
         thread.start()
 
     def _capture(self):
