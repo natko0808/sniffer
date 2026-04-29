@@ -1,0 +1,8 @@
+.deps/
+__pycache__/
+.pycache/
+.pytest_cache/
+.mypy_cache/
+.swift-module-cache/
+.clang-module-cache/
+.assessme/

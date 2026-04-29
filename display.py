@@ -1,84 +1,156 @@
 '''
-@ASSESSME.USERID:ms1648
-@ASSESSME.AUTHOR: Marko Slivaric
-@ASSESSME.DESCRIPTION: Programming Project
+@ASSESSME.USERID: YOUR_GROUP_NAME
+@ASSESSME.AUTHOR: Your Name - yourRIT, Teammate Name - teammateRIT
+@ASSESSME.DESCRIPTION: Problem Solving 9
 @ASSESSME.ANALYZE: YES
 @ASSESSME.INTENSITY:LOW
 '''
 
+from __future__ import annotations
+
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk
+
+from packet_utils import PacketSummary
+
 
 class Display:
-    def __init__(self, parent):
+    """Render the packet table and the details panel."""
+
+    def __init__(self, parent: tk.Widget):
         self.parent = parent
         self.click_callback = None
-        self.make_gui()
+        self._build_gui()
 
-    
-    def make_gui(self):
-        tk.Label(self.parent, text="Packets", font=("Arial", 12, "bold")).pack()
+    def _build_gui(self) -> None:
+        container = ttk.Frame(self.parent, padding=(10, 10, 10, 0))
+        container.pack(fill=tk.BOTH, expand=True)
 
-        self.table = ttk.Treeview(self. parent,columns=("No", "Source", "Dest", "Protocol"), show ="headings", height=15)
+        paned = ttk.PanedWindow(container, orient=tk.VERTICAL)
+        paned.pack(fill=tk.BOTH, expand=True)
 
-        self.table.heading("No", text="No")
-        self.table.heading("Source", text="Source IP")
-        self.table.heading("Dest", text="Destination IP")
-        self.table.heading("Protocol", text="Protocol")
+        table_frame = ttk.LabelFrame(paned, text="Captured Packets", padding=8)
+        details_frame = ttk.LabelFrame(paned, text="Packet Details", padding=8)
+        paned.add(table_frame, weight=3)
+        paned.add(details_frame, weight=2)
 
-        self.table.column("No", width=50)
-        self.table.column("Source", width=150)
-        self.table.column("Dest", width=150)
-        self.table.column("Protocol", width=100)
+        columns = (
+            "number",
+            "time",
+            "protocol",
+            "src_ip",
+            "dst_ip",
+            "src_port",
+            "dst_port",
+            "src_mac",
+            "dst_mac",
+            "length",
+            "fragmentation",
+        )
 
-        self.table.pack(fill=tk.BOTH, expand=True)
-        self.table.bind("<<TreeviewSelect>>", self._clicked)
+        self.table = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="browse")
 
-        tk.Label(self.parent, text="Packet Details", font=("Arial", 12, "bold")).pack()
-        self.details = scrolledtext.ScrolledText(self.parent, height=15, font=("Courier", 10))
-        self.details.pack(fill=tk.BOTH, expand=True)
+        headings = {
+            "number": ("No", 60),
+            "time": ("Time", 120),
+            "protocol": ("Protocol", 90),
+            "src_ip": ("Source IP", 140),
+            "dst_ip": ("Destination IP", 140),
+            "src_port": ("Src Port", 90),
+            "dst_port": ("Dst Port", 90),
+            "src_mac": ("Source MAC", 150),
+            "dst_mac": ("Destination MAC", 150),
+            "length": ("Length", 80),
+            "fragmentation": ("Fragmentation", 150),
+        }
 
-    def add_packet(self, num, src, dst, proto):
-        self.table.insert("", tk.END, values=(num, src, dst, proto))
-    
-    def clear_table(self):
+        for column_name, (heading_text, width) in headings.items():
+            self.table.heading(column_name, text=heading_text)
+            self.table.column(column_name, width=width, anchor=tk.W, stretch=True)
+
+        table_scroll_y = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.table.yview)
+        table_scroll_x = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.table.xview)
+        self.table.configure(yscrollcommand=table_scroll_y.set, xscrollcommand=table_scroll_x.set)
+
+        self.table.grid(row=0, column=0, sticky="nsew")
+        table_scroll_y.grid(row=0, column=1, sticky="ns")
+        table_scroll_x.grid(row=1, column=0, sticky="ew")
+
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+
+        self.table.bind("<<TreeviewSelect>>", self._on_select)
+
+        self.details = tk.Text(
+            details_frame,
+            wrap="none",
+            font=("Menlo", 11),
+            height=18,
+        )
+        details_scroll_y = ttk.Scrollbar(details_frame, orient=tk.VERTICAL, command=self.details.yview)
+        details_scroll_x = ttk.Scrollbar(details_frame, orient=tk.HORIZONTAL, command=self.details.xview)
+        self.details.configure(yscrollcommand=details_scroll_y.set, xscrollcommand=details_scroll_x.set)
+
+        self.details.grid(row=0, column=0, sticky="nsew")
+        details_scroll_y.grid(row=0, column=1, sticky="ns")
+        details_scroll_x.grid(row=1, column=0, sticky="ew")
+
+        details_frame.rowconfigure(0, weight=1)
+        details_frame.columnconfigure(0, weight=1)
+
+        self.show_details("Select a packet to inspect its parsed headers and payload.")
+
+    def set_click_callback(self, callback) -> None:
+        self.click_callback = callback
+
+    def add_packet(self, summary: PacketSummary) -> None:
+        row_id = self._row_id(summary.number)
+        self.table.insert(
+            "",
+            tk.END,
+            iid=row_id,
+            values=(
+                summary.number,
+                summary.time_text,
+                summary.protocol,
+                summary.src_ip,
+                summary.dst_ip,
+                summary.src_port,
+                summary.dst_port,
+                summary.src_mac,
+                summary.dst_mac,
+                summary.length,
+                summary.fragmentation,
+            ),
+        )
+        self.table.see(row_id)
+
+    def replace_packets(self, summaries: list[PacketSummary]) -> None:
+        self.clear_packets()
+        for summary in summaries:
+            self.add_packet(summary)
+
+    def clear_packets(self) -> None:
         for item in self.table.get_children():
             self.table.delete(item)
 
-    def show_details(self, packets):
-        self.details.delete(1.0, tk.END)
+    def show_details(self, text: str) -> None:
+        self.details.delete("1.0", tk.END)
+        self.details.insert(tk.END, text)
+        self.details.see("1.0")
 
-        self.details.insert(tk.END, "PACKET DETAILS\n")
-        self.details.insert(tk.END, "=" * 60 + "\n\n")
-        self.details.insert(tk.END, packets.show(dump=True))
+    def _on_select(self, _event) -> None:
+        if not self.click_callback:
+            return
 
-        self.details.insert(tk.END, "\n\nHEX AND ASCII\n")
-        self.details.insert(tk.END, "=" * 60 + "\n")
-
-        data = bytes(packets)
-
-        for i in range(0, len(data), 16):
-            hex_str = ""
-            ascii_str = ""
-
-            for j in range(16):
-                if i + j < len(data):
-                    byte = data[i+j]
-                    hex_str += f"{byte:02x} "
-                    ascii_str += chr(byte) if 32 <= byte <= 127 else "."
-                else:
-                    hex_str += "   "
-
-            self.details.insert(tk.END, f"{hex_str} {ascii_str}\n")
-
-    def _clicked(self, event):
         selection = self.table.selection()
-        if selection and self.click_callback:
-            item = self.table.item(selection[0])
-            packet_num = int(item['values'][0]) -1
-            self.click_callback(packet_num)
+        if not selection:
+            return
 
-    def set_click_callback(self, func):
-        self.click_callback = func
+        values = self.table.item(selection[0], "values")
+        if values:
+            self.click_callback(int(values[0]))
 
-        
+    @staticmethod
+    def _row_id(packet_number: int) -> str:
+        return f"packet-{packet_number}"

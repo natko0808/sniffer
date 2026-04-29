@@ -1,59 +1,97 @@
 '''
-@ASSESSME.USERID:ls3385
-@ASSESSME.AUTHOR: Lovro Sekelj
-@ASSESSME.DESCRIPTION: Programming Project
+@ASSESSME.USERID: YOUR_GROUP_NAME
+@ASSESSME.AUTHOR: Your Name - yourRIT, Teammate Name - teammateRIT
+@ASSESSME.DESCRIPTION: Problem Solving 9
 @ASSESSME.ANALYZE: YES
 @ASSESSME.INTENSITY:LOW
 '''
 
-from scapy.all import sniff, wrpcap, rdpcap, IP, TCP,UDP, ICMP, ARP
+from __future__ import annotations
+
 import threading
+from typing import Callable, Optional
+
+import bootstrap  # noqa: F401
+from scapy.all import AsyncSniffer, get_if_list, rdpcap, wrpcap
+
+
+PacketCallback = Callable[[object, int], None]
+
 
 class Capture:
-    def __init__(self):
-        self.packets = []
-        self.capturing = False
+    """Manage live sniffing plus offline packet buffers for the GUI."""
 
-    def start(self, callback):
-        self.capturing = True
+    def __init__(self, callback: PacketCallback):
         self.callback = callback
-        thread = threading.Thread(target = self._capture, daemon = True)
-        thread.start()
+        self._lock = threading.Lock()
+        self._packets: list[object] = []
+        self._sniffer: Optional[AsyncSniffer] = None
+        self._running = False
 
-    def _capture(self):
-        sniff(prn = self._got_packet, store = 0, stop_filter = lambda x: not self.capturing)
+    @property
+    def is_running(self) -> bool:
+        return self._running
 
-    def _got_packet(self, pkt):
-        self.packets.append(pkt)
-        num = len(self.packets)
-        src = pkt[IP].src if pkt.haslayer(IP) else "N/A"
-        dst = pkt[IP].dst if pkt.haslayer(IP) else "N/A"
+    def list_interfaces(self) -> list[str]:
+        return sorted(dict.fromkeys(get_if_list()))
 
-        if pkt.haslayer(TCP):
-            proto = "TCP"
-        elif pkt.haslayer(UDP):
-            proto = "UDP"
-        elif pkt.haslayer(ICMP):
-            proto = "ICMP"
-        elif pkt.haslayer(ARP):
-            proto = "ARP"
-        else:
-            proto = "Other"
+    def start(self, interface: str) -> None:
+        if self._running:
+            raise RuntimeError("Packet capture is already running.")
 
-        self.callback(pkt, num, src, dst, proto)
-    
-    def stop(self):
-        self.capturing = False
-        return len(self.packets)
-    
-    def get_packet(self, index):
-        if index < len(self.packets):
-            return self.packets[index]
+        self.clear()
+        self._sniffer = AsyncSniffer(iface=interface, prn=self._handle_packet, store=False)
+        self._running = True
+
+        try:
+            self._sniffer.start()
+        except Exception:
+            self._sniffer = None
+            self._running = False
+            raise
+
+    def stop(self) -> int:
+        if self._sniffer is not None:
+            self._sniffer.stop()
+            self._sniffer = None
+        self._running = False
+        return self.packet_count
+
+    def clear(self) -> None:
+        with self._lock:
+            self._packets = []
+
+    def load(self, filename: str) -> list[object]:
+        packets = list(rdpcap(filename))
+        with self._lock:
+            self._packets = packets
+        self._running = False
+        self._sniffer = None
+        return list(self._packets)
+
+    def save(self, filename: str) -> None:
+        packets = self.get_packets()
+        wrpcap(filename, packets)
+
+    def get_packets(self) -> list[object]:
+        with self._lock:
+            return list(self._packets)
+
+    def get_packet(self, packet_number: int) -> Optional[object]:
+        with self._lock:
+            index = packet_number - 1
+            if 0 <= index < len(self._packets):
+                return self._packets[index]
         return None
-    
-    def save(self, filename):
-        wrpcap(filename, self.packets)
 
-    def load( self, filename):
-        self.packets = rdpcap(filename)
-        return self.packets
+    @property
+    def packet_count(self) -> int:
+        with self._lock:
+            return len(self._packets)
+
+    def _handle_packet(self, packet: object) -> None:
+        with self._lock:
+            self._packets.append(packet)
+            packet_number = len(self._packets)
+
+        self.callback(packet, packet_number)
