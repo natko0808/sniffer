@@ -126,7 +126,9 @@ class PacketSnifferApp:
         self.stop_button.state(["disabled"])
 
     def start_capture(self) -> None:
-        interface = self.interface_var.get().strip()
+        interface_display = self.interface_var.get().strip()
+        interface = interface_display.split(" - ")[0]
+
         if not interface:
             messagebox.showwarning("Interface Required", "Select a network interface before starting capture.")
             return
