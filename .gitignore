@@ -6,3 +6,4 @@ __pycache__/
 .swift-module-cache/
 .clang-module-cache/
 .assessme/
+.venv/
