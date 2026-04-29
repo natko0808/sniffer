@@ -36,7 +36,7 @@ class Display:
 
         tk.Label(self.parent, text="Packet Details", font=("Arial", 12, "bold")).pack()
         self.details = scrolledtext.ScrolledText(self.parent, height=15, font=("Courier", 10))
-        self.details.pack(fill=tk.BOT, expand=True)
+        self.details.pack(fill=tk.BOTH, expand=True)
 
     def add_packet(self, num, src, dst, proto):
         self.table.insert("", tk.END, values=(num, src, dst, proto))
