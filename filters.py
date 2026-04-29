@@ -85,5 +85,10 @@ class Filters:
         if self.apply_callback:
             self.apply_callback()
 
-    def set_apply_callback(self, callback):
-        self.apply_callback = callback:
+    def apply(self):
+        if self.apply_callback:
+            self.apply_callback()
+            
+    def set_apply_callback(self, func):
+        self.apply_callback = func
+            
